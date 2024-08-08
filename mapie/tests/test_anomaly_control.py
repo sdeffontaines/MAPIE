@@ -1,16 +1,17 @@
 import json
 import os
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 import seaborn as sns
 import tensorflow as tf
+from mapie.anomaly_control import AnomalyControl
+from mapie.control_risk.p_values import compute_hoeffdding_bentkus_p_value
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import precision_score, recall_score
 from sklearn.model_selection import train_test_split
-
-from mapie.control_risk.p_values import compute_hoeffdding_bentkus_p_value
-from mapie.anomaly_control import AnomalyControl
 
 RANDOM_STATE = 42
 NUMBER_OF_DISPLAYED_OUTLIERS = 50
@@ -98,18 +99,21 @@ def test_initialized() -> None:
     AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
 
 
-def test_check_alpha():
-    try:
-        AnomalyControl(ano_detector=dif, alpha=1.2, delta=DELTA)
-    except ValueError as e:
-        assert str(e) == "Invalid alpha/delta. Allowed values are between 0 and 1."
+@pytest.mark.parametrize("alpha", [1.2, "not a float"])
+def test_check_alpha(alpha):
+    with pytest.raises(
+        ValueError,
+        match="Invalid alpha/delta. Allowed values are only floats between 0 and 1",
+    ):
+        AnomalyControl(ano_detector=dif, alpha=alpha, delta=DELTA)
 
 
 def test_check_delta():
-    try:
+    with pytest.raises(
+        ValueError,
+        match="Invalid alpha/delta. Allowed values are only floats between 0 and 1",
+    ):
         AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=1.2)
-    except ValueError as e:
-        assert str(e) == "Invalid alpha/delta. Allowed values are between 0 and 1."
 
 
 def test_fit_ano_detector():
@@ -134,3 +138,26 @@ def test_predict():
     predictions = ano.predict(embeddings_calib)
     assert len(predictions) == len(embeddings_calib), "Prediction length mismatch."
     assert predictions.dtype == bool, "Predictions should be boolean."
+
+
+def test_predict2():
+    ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
+    with pytest.raises(
+        ValueError,
+        match="This AnomalyControl instance is not fitted yet. Call 'fit' with appropriate arguments before using this estimator.",
+    ):
+        ano.predict(embeddings_calib)
+
+
+def test_low_alpha_warning():
+    """Test that a warning is raised for low alpha."""
+    low_alpha = 0.001
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ano = AnomalyControl(ano_detector=dif, alpha=low_alpha, delta=DELTA)
+        ano.fit_calibrator(X_calib=embeddings_calib, y_calib=y_calib)
+        assert any(
+            "Alpha is too low; no valid threshold can be found with this alpha. Consider using a higher alpha value."
+            in str(warning.message)
+            for warning in w
+        ), "Expected warning not raised."

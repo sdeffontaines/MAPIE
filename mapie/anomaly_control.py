@@ -1,13 +1,14 @@
-import json
-import os
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import tensorflow as tf
 from sklearn.ensemble import IsolationForest
+from sklearn.exceptions import NotFittedError
 from sklearn.metrics import precision_score, recall_score
 from sklearn.model_selection import train_test_split
+from sklearn.utils.validation import check_is_fitted
 
 from mapie.control_risk.p_values import compute_hoeffdding_bentkus_p_value
 
@@ -20,7 +21,6 @@ class AnomalyControl:
         self.ano_detector = ano_detector
         self.alpha = self.check_alpha_delta(alpha)
         self.delta = self.check_alpha_delta(delta)
-        self.ano_th = 0
 
     def check_alpha_delta(self, alpha: float):
         """
@@ -46,10 +46,28 @@ class AnomalyControl:
             If alpha is not a float between 0 and 1.
         """
         if not isinstance(alpha, float):
-            raise ValueError("Invalid alpha/delta. Allowed values are only one float")
+            raise ValueError(
+                "Invalid alpha/delta. Allowed values are only floats between 0 and 1"
+            )
         if alpha < 0 or alpha > 1:
-            raise ValueError("Invalid alpha/delta. Allowed values are between 0 and 1.")
+            raise ValueError(
+                "Invalid alpha/delta. Allowed values are only floats between 0 and 1"
+            )
         return alpha
+
+    def _check_ano_detector_fitted(self, X_calib) -> None:
+        """
+        Check if the anomaly detector is fitted to the training dataset
+
+        Raises
+        ------
+        ValueError
+            If the anomaly detector is not fitted to the training dataset.
+        """
+        try:
+            self.ano_detector.predict(X_calib)
+        except NotFittedError as e:
+            print(repr(e))
 
     def _check_parameters(self) -> None:
         """
@@ -60,7 +78,7 @@ class AnomalyControl:
         ValueError
             If parameters are not valid.
         """
-        self.check_alpha_delta(self.delta)
+        self.check_alpha_delta(self.alpha)
         self.check_alpha_delta(self.delta)
 
     def fit_ano_detector(self, X_train):
@@ -77,6 +95,7 @@ class AnomalyControl:
 
     def fit_calibrator(self, X_calib, y_calib):
         # check if ood_detector is fitted
+        self._check_ano_detector_fitted(X_calib)
         # check alpha and delta
         self._check_parameters()
         # Raise Warning if alpha is to low
@@ -101,8 +120,14 @@ class AnomalyControl:
             i for i in range(len(ths)) if p_values[i] <= (self.delta / len(ths))
         ]
         valid_ths = ths[valid_index]
-        # lever erreur si pas de seuil
-        self.ano_th = valid_ths.max() if len(valid_ths) > 0 else 999
+        if len(valid_ths) > 0:
+            self.ano_th = valid_ths.max()
+        else:
+            warnings.warn(
+                "Alpha is too low; no valid threshold can be found with this alpha. Consider using a higher alpha value."
+            )
+            self.ano_th = ths.max()
+
         return self
 
     def fit(self, X_train, X_calib, y_calib):
@@ -111,8 +136,7 @@ class AnomalyControl:
         return self
 
     def predict(self, X):
-
-        # check is fitted
+        check_is_fitted(self, self.fit_attributes)
 
         ano_scores = self.ano_detector.predict(X)
         return ano_scores > self.ano_th

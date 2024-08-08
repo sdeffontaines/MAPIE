@@ -16,11 +16,52 @@ class AnomalyControl:
 
     fit_attributes = ["ano_th"]
 
-    def __init__(self, ano_detector, alpha, delta, nb_iter):
+    def __init__(self, ano_detector, alpha, delta):
         self.ano_detector = ano_detector
-        self.alpha = alpha
-        self.delta = delta
-        self.nb_iter = nb_iter
+        self.alpha = self.check_alpha_delta(alpha)
+        self.delta = self.check_alpha_delta(delta)
+        self.ano_th = 0
+
+    def check_alpha_delta(self, alpha: float):
+        """
+        Check alpha.
+
+        Parameters
+        ----------
+        alpha: float
+            Can be only a float
+            Between 0 and 1, represent the uncertainty of the confidence interval.
+            Lower alpha produce larger (more conservative) prediction intervals.
+            alpha is the complement of the target coverage level.
+            By default 0.1.
+
+        Returns
+        -------
+        float
+            Alpha.
+
+        Raises
+        ------
+        ValueError
+            If alpha is not a float between 0 and 1.
+        """
+        if not isinstance(alpha, float):
+            raise ValueError("Invalid alpha/delta. Allowed values are only one float")
+        if alpha < 0 or alpha > 1:
+            raise ValueError("Invalid alpha/delta. Allowed values are between 0 and 1.")
+        return alpha
+
+    def _check_parameters(self) -> None:
+        """
+        Perform several checks on input parameters.
+
+        Raises
+        ------
+        ValueError
+            If parameters are not valid.
+        """
+        self.check_alpha_delta(self.delta)
+        self.check_alpha_delta(self.delta)
 
     def fit_ano_detector(self, X_train):
         """
@@ -37,6 +78,7 @@ class AnomalyControl:
     def fit_calibrator(self, X_calib, y_calib):
         # check if ood_detector is fitted
         # check alpha and delta
+        self._check_parameters()
         # Raise Warning if alpha is to low
 
         # on suppose aussi qu'on a déjà des embedding si c'est necessaire
@@ -59,11 +101,11 @@ class AnomalyControl:
             i for i in range(len(ths)) if p_values[i] <= (self.delta / len(ths))
         ]
         valid_ths = ths[valid_index]
-        self.ano_th = valid_ths.max()
+        # lever erreur si pas de seuil
+        self.ano_th = valid_ths.max() if len(valid_ths) > 0 else 999
         return self
 
-    def fit(self, X, y, calib_size: float):
-        X_train, X_calib, _, y_calib = train_test_split(X, y, test_size=calib_size)
+    def fit(self, X_train, X_calib, y_calib):
         self.fit_ano_detector(X_train)
         self.fit_calibrator(X_calib, y_calib)
         return self

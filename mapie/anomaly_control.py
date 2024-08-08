@@ -85,15 +85,24 @@ class AnomalyControl:
         """
         Fit the anomaly detector chosen to the training dataset
 
-        :param X: _description_
-        :param y: _description_
-        :return: _description_
+        :param X_train: Training dataset can be the embedding of X_train
+
+        :return:
+            AnomalyControl
         """
         # check si on doit prendre embedding ? ou on dit que ça était fait avant ?
         self.ano_detector = self.ano_detector.fit(X_train)
         return self
 
     def fit_calibrator(self, X_calib: np.array, y_calib: np.array) -> "AnomalyControl":
+        """
+        Find the best threshold for the anomaly detector with respect to alpha and delta decided by the user.
+
+        :param X_calib: Calibration dataset. Can be the embedding of X_calib.
+        :param y_calib: Calibration ground truth. Only time when annotations are needed. Binary classification : Anomaly or not.
+        :return:
+            AnomalyControl
+        """
         # check if ood_detector is fitted
         self._check_ano_detector_fitted(X_calib)
         # check alpha and delta
@@ -133,11 +142,27 @@ class AnomalyControl:
     def fit(
         self, X_train: np.array, X_calib: np.array, y_calib: np.array
     ) -> "AnomalyControl":
+        """
+        Fit the anomaly detector to the training dataset and calibrate it (find the best threshold).
+
+        :param X_train: training dataset
+        :param X_calib: calibration dataset
+        :param y_calib: calibration ground truth
+        :return:
+            AnomalyControl
+        """
         self.fit_ano_detector(X_train)
         self.fit_calibrator(X_calib, y_calib)
         return self
 
     def predict(self, X: np.array) -> np.array(bool):
+        """
+        Differenciate anomaly from "normal" data
+
+        :X: data with potential anomalies
+        :return: boolean with True if the image is "normal" and False if it is likely to be an anomaly.
+
+        """
         check_is_fitted(self, self.fit_attributes)
 
         ano_scores = self.ano_detector.predict(X)

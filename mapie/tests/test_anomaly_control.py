@@ -25,7 +25,7 @@ all_recalls = []
 all_p_values = []
 
 
-def prep_data(anomaly_percentage: float):
+def prep_data(anomaly_percentage: float) -> tuple:
     """Prepare the dataset for the experience. Load the dataset. Preprocess and split it.
     The normal data are images of boat from CIFAR-10 (training set) and the anomalies are handwritten digits from MNIST.
 
@@ -71,7 +71,15 @@ def prep_data(anomaly_percentage: float):
     return X_train, X_calib, y_calib
 
 
-def create_embedding(X_train, X_calib):
+def create_embedding(X_train: np.array, X_calib: np.array) -> tuple:
+    """
+    Generate embeddings from a pretrained model (resnet256 pretrained on Cifar10)
+
+    :param X_train: training dataset
+    :param X_calib: calibration dataset
+    :return:
+        embeddings
+    """
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     model_path = os.path.expanduser("~/") + ".oodeel/saved_models"
     os.makedirs(model_path, exist_ok=True)
@@ -100,7 +108,11 @@ def test_initialized() -> None:
 
 
 @pytest.mark.parametrize("alpha", [1.2, "not a float"])
-def test_check_alpha(alpha):
+def test_check_alpha(alpha: float) -> None:
+    """Test that alpha has a valid value
+
+    :param alpha: risk tolerance
+    """
     with pytest.raises(
         ValueError,
         match="Invalid alpha/delta. Allowed values are only floats between 0 and 1",
@@ -108,7 +120,11 @@ def test_check_alpha(alpha):
         AnomalyControl(ano_detector=dif, alpha=alpha, delta=DELTA)
 
 
-def test_check_delta():
+def test_check_delta() -> None:
+    """Test that delta has a valid value
+
+    :param delta: error level
+    """
     with pytest.raises(
         ValueError,
         match="Invalid alpha/delta. Allowed values are only floats between 0 and 1",
@@ -116,23 +132,25 @@ def test_check_delta():
         AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=1.2)
 
 
-def test_fit_ano_detector():
+def test_fit_ano_detector() -> None:
     """Test the fitting of the anomaly detector to the training dataset to see if it does not crash."""
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
     ano.fit_ano_detector(embeddings_train)
 
 
-def test_fit():
+def test_fit() -> None:
+    """Test the global function fit."""
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
     ano.fit(embeddings_train, embeddings_calib, y_calib)
 
 
-def test_fit_calibrator():
+def test_fit_calibrator() -> None:
+    """Test"""
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
     ano.fit_calibrator(X_calib=embeddings_calib, y_calib=y_calib)
 
 
-def test_predict():
+def test_predict() -> None:
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
     ano.fit(embeddings_train, embeddings_calib, y_calib)
     predictions = ano.predict(embeddings_calib)
@@ -140,7 +158,7 @@ def test_predict():
     assert predictions.dtype == bool, "Predictions should be boolean."
 
 
-def test_predict2():
+def test_predict2() -> None:
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
     with pytest.raises(
         ValueError,
@@ -149,7 +167,7 @@ def test_predict2():
         ano.predict(embeddings_calib)
 
 
-def test_low_alpha_warning():
+def test_low_alpha_warning() -> None:
     """Test that a warning is raised for low alpha."""
     low_alpha = 0.001
     with warnings.catch_warnings(record=True) as w:

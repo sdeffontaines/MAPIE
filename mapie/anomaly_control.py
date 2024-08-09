@@ -48,13 +48,12 @@ class AnomalyControl:
     """
 
     fit_attributes = ["ano_th_"]
-    # ths = np.linspace(0, 1, 100)
+    ths = np.linspace(0, 1, 100)
 
     def __init__(self, ano_detector, alpha: float, delta: float) -> None:
         self.ano_detector = self._check_ano_detector(ano_detector)
         self.alpha = self._check_alpha_delta(alpha)
         self.delta = self._check_alpha_delta(delta)
-        # self.ths = ths
 
     def _check_ano_detector(self, ano_detector):
         if isinstance(ano_detector, IsolationForest):
@@ -140,9 +139,8 @@ class AnomalyControl:
 
         precisions = []
         recalls = []
-        ths = np.linspace(0, 1, 100)
 
-        for th in ths:
+        for th in self.ths:
             outlier_score_predictions = clf.decision_function(X_calib)
             y_pred = (outlier_score_predictions < th).astype(int)
             precisions.append(precision_score(y_calib, y_pred))
@@ -152,16 +150,18 @@ class AnomalyControl:
             1 - np.array(precisions), len(y_calib), self.alpha
         )
         valid_index = [
-            i for i in range(len(ths)) if p_values[i] <= (self.delta / len(ths))
+            i
+            for i in range(len(self.ths))
+            if p_values[i] <= (self.delta / len(self.ths))
         ]
-        valid_ths = ths[valid_index]
+        valid_ths = self.ths[valid_index]
         if len(valid_ths) > 0:
             self.ano_th_ = valid_ths.max()
         else:
             warnings.warn(
                 "Alpha is too low; no valid threshold can be found with this alpha. Consider using a higher alpha value."
             )
-            self.ano_th_ = ths.max()
+            self.ano_th_ = self.ths.max()
 
         return self
 

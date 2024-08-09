@@ -1,28 +1,68 @@
 import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-import tensorflow as tf
 from sklearn.ensemble import IsolationForest
 from sklearn.exceptions import NotFittedError
 from sklearn.metrics import precision_score, recall_score
-from sklearn.model_selection import train_test_split
 from sklearn.utils.validation import check_is_fitted
 
 from mapie.control_risk.p_values import compute_hoeffdding_bentkus_p_value
 
 
 class AnomalyControl:
+    """
+    Anomaly Detection with Optimal Threshold Selection
 
-    fit_attributes = ["ano_th"]
+    Most anomaly detectors use a threshold to determine whether an input is anomalous or "normal" data.
+    This class identifies the optimal threshold that meets the user's specified risk tolerance and error level.
+    The "Learn and Test" principle is employed to achieve this.
+    Currently, this technique is specifically applied to a deep isolation forest using the IsolationForest implementation from scikit-learn.
+    In the future, small modifications may be necessary to make this class compatible with other types of anomaly detectors.
+
+
+    Parameters
+    ----------
+    ano_detector: IsolationForest
+        An anomaly detector with scikit-learn API
+        (i.e. with fit, predict, and predict_proba methods), by default None.
+
+    alpha: float between 0 and 1
+        Risk tolerance.
+        By default 0.2.
+
+    delta: float between 0 and 1
+        Error level.
+        By default 0.01.
+
+
+    Attribute
+    ----------
+    ano_th_: Optimal threshold
+
+    References
+    ----------
+    [1] Angelopoulos, A. N., Bates, S., Candès, E. J., Jordan,
+    M. I., & Lei, L. (2021). Learn then test:
+    "Calibrating predictive algorithms to achieve risk control".
+
+    """
+
+    fit_attributes = ["ano_th_"]
+    # ths = np.linspace(0, 1, 100)
 
     def __init__(self, ano_detector, alpha: float, delta: float) -> None:
-        self.ano_detector = ano_detector
-        self.alpha = self.check_alpha_delta(alpha)
-        self.delta = self.check_alpha_delta(delta)
+        self.ano_detector = self._check_ano_detector(ano_detector)
+        self.alpha = self._check_alpha_delta(alpha)
+        self.delta = self._check_alpha_delta(delta)
+        # self.ths = ths
 
-    def check_alpha_delta(self, alpha: float) -> float:
+    def _check_ano_detector(self, ano_detector):
+        if isinstance(ano_detector, IsolationForest):
+            return ano_detector
+        else:
+            raise ValueError("The anomaly detector is not an Isolation Forest")
+
+    def _check_alpha_delta(self, alpha: float) -> float:
         """
         Check alpha.
 
@@ -55,7 +95,7 @@ class AnomalyControl:
             )
         return alpha
 
-    def _check_ano_detector_fitted(self, X_calib: np.array) -> None:
+    def _check_ano_detector_fitted(self) -> None:
         """
         Check if the anomaly detector is fitted to the training dataset
 
@@ -65,21 +105,9 @@ class AnomalyControl:
             If the anomaly detector is not fitted to the training dataset.
         """
         try:
-            self.ano_detector.predict(X_calib)
+            check_is_fitted(self.ano_detector)
         except NotFittedError as e:
-            print(repr(e))
-
-    def _check_parameters(self) -> None:
-        """
-        Perform several checks on input parameters.
-
-        Raises
-        ------
-        ValueError
-            If parameters are not valid.
-        """
-        self.check_alpha_delta(self.alpha)
-        self.check_alpha_delta(self.delta)
+            raise ValueError(f"The anomaly detector is not fitted: {repr(e)}")
 
     def fit_ano_detector(self, X_train: np.array) -> "AnomalyControl":
         """
@@ -104,17 +132,15 @@ class AnomalyControl:
             AnomalyControl
         """
         # check if ood_detector is fitted
-        self._check_ano_detector_fitted(X_calib)
-        # check alpha and delta
-        self._check_parameters()
+        self._check_ano_detector_fitted()
         # Raise Warning if alpha is to low
 
         # on suppose aussi qu'on a déjà des embedding si c'est necessaire
-        ths = np.linspace(0, 1, 100)
         clf = self.ano_detector
 
         precisions = []
         recalls = []
+        ths = np.linspace(0, 1, 100)
 
         for th in ths:
             outlier_score_predictions = clf.decision_function(X_calib)
@@ -130,12 +156,12 @@ class AnomalyControl:
         ]
         valid_ths = ths[valid_index]
         if len(valid_ths) > 0:
-            self.ano_th = valid_ths.max()
+            self.ano_th_ = valid_ths.max()
         else:
             warnings.warn(
                 "Alpha is too low; no valid threshold can be found with this alpha. Consider using a higher alpha value."
             )
-            self.ano_th = ths.max()
+            self.ano_th_ = ths.max()
 
         return self
 
@@ -166,4 +192,4 @@ class AnomalyControl:
         check_is_fitted(self, self.fit_attributes)
 
         ano_scores = self.ano_detector.predict(X)
-        return ano_scores > self.ano_th
+        return ano_scores > self.ano_th_

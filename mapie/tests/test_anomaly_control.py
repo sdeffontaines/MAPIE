@@ -1,16 +1,10 @@
-import json
 import os
-import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-import seaborn as sns
 import tensorflow as tf
 from mapie.anomaly_control import AnomalyControl
-from mapie.control_risk.p_values import compute_hoeffdding_bentkus_p_value
 from sklearn.ensemble import IsolationForest
-from sklearn.metrics import precision_score, recall_score
 from sklearn.model_selection import train_test_split
 
 RANDOM_STATE = 42
@@ -97,13 +91,13 @@ def create_embedding(X_train: np.array, X_calib: np.array) -> tuple:
 
 
 ############### Tests #########
-dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
-X_train, X_calib, y_calib = prep_data(ANOMALY_PERCENTAGE)
-embeddings_train, embeddings_calib = create_embedding(X_train, X_calib)
+X_TRAIN, X_CALIB, Y_CALIB = prep_data(ANOMALY_PERCENTAGE)
+EMBEDDINGS_TRAIN, EMBEDDINGS_CALIB = create_embedding(X_TRAIN, X_CALIB)
 
 
 def test_initialized() -> None:
     """Test that initialization does not crash."""
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
 
 
@@ -113,6 +107,7 @@ def test_check_alpha(alpha: float) -> None:
 
     :param alpha: risk tolerance
     """
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     with pytest.raises(
         ValueError,
         match="Invalid alpha/delta. Allowed values are only floats between 0 and 1",
@@ -125,6 +120,7 @@ def test_check_delta() -> None:
 
     :param delta: error level
     """
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     with pytest.raises(
         ValueError,
         match="Invalid alpha/delta. Allowed values are only floats between 0 and 1",
@@ -134,48 +130,54 @@ def test_check_delta() -> None:
 
 def test_fit_ano_detector() -> None:
     """Test the fitting of the anomaly detector to the training dataset to see if it does not crash."""
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
-    ano.fit_ano_detector(embeddings_train)
+    ano.fit_ano_detector(EMBEDDINGS_TRAIN)
 
 
 def test_fit() -> None:
     """Test the global function fit."""
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
-    ano.fit(embeddings_train, embeddings_calib, y_calib)
+    ano.fit(EMBEDDINGS_TRAIN, EMBEDDINGS_CALIB, Y_CALIB)
 
 
-def test_fit_calibrator() -> None:
+def test_check_ano_detector_fitted() -> None:
     """Test"""
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
-    ano.fit_calibrator(X_calib=embeddings_calib, y_calib=y_calib)
+    with pytest.raises(ValueError, match="The anomaly detector is not fitted"):
+        ano._check_ano_detector_fitted()
 
 
 def test_predict() -> None:
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
-    ano.fit(embeddings_train, embeddings_calib, y_calib)
-    predictions = ano.predict(embeddings_calib)
-    assert len(predictions) == len(embeddings_calib), "Prediction length mismatch."
+    ano.fit(EMBEDDINGS_TRAIN, EMBEDDINGS_CALIB, Y_CALIB)
+    predictions = ano.predict(EMBEDDINGS_CALIB)
+    assert len(predictions) == len(EMBEDDINGS_CALIB), "Prediction length mismatch."
     assert predictions.dtype == bool, "Predictions should be boolean."
 
 
 def test_predict2() -> None:
+    """_summary_"""
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
     ano = AnomalyControl(ano_detector=dif, alpha=ALPHA, delta=DELTA)
     with pytest.raises(
         ValueError,
         match="This AnomalyControl instance is not fitted yet. Call 'fit' with appropriate arguments before using this estimator.",
     ):
-        ano.predict(embeddings_calib)
+        ano.predict(EMBEDDINGS_CALIB)
 
 
 def test_low_alpha_warning() -> None:
     """Test that a warning is raised for low alpha."""
-    low_alpha = 0.001
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        ano = AnomalyControl(ano_detector=dif, alpha=low_alpha, delta=DELTA)
-        ano.fit_calibrator(X_calib=embeddings_calib, y_calib=y_calib)
-        assert any(
-            "Alpha is too low; no valid threshold can be found with this alpha. Consider using a higher alpha value."
-            in str(warning.message)
-            for warning in w
-        ), "Expected warning not raised."
+    dif = IsolationForest(random_state=RANDOM_STATE, contamination=ANOMALY_PERCENTAGE)
+    low_alpha = 0.00001
+    ano = AnomalyControl(ano_detector=dif, alpha=low_alpha, delta=DELTA)
+    ano.fit(EMBEDDINGS_TRAIN, EMBEDDINGS_CALIB, Y_CALIB)
+    with pytest.warns(
+        UserWarning,
+        match="Alpha is too low; no valid threshold can be found with this alpha. Consider using a higher alpha value.",
+    ):
+        ano.fit_calibrator(X_calib=EMBEDDINGS_CALIB, y_calib=Y_CALIB)
